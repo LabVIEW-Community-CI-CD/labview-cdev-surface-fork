@@ -13,18 +13,6 @@ on:
         required: false
         default: ''
         type: string
-  push:
-    branches:
-      - main
-    paths:
-      - tools/nsis-selftest-windows/Dockerfile
-      - tools/nsis-selftest-windows/README.md
-      - scripts/Invoke-WindowsContainerNsisSelfTest.ps1
-      - scripts/Build-RunnerCliBundleFromManifest.ps1
-      - scripts/Install-WorkspaceFromManifest.ps1
-      - workspace-governance.json
-      - workspace-governance-payload/tools/cdev-cli/**
-      - .github/workflows/publish-windows-nsis-parity-image.yml
 
 permissions:
   contents: read
