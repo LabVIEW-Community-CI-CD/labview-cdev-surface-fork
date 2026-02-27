@@ -55,6 +55,7 @@ $ErrorActionPreference = 'Stop'
 
 $opsSnapshotScript = Join-Path $PSScriptRoot 'Invoke-OpsMonitoringSnapshot.ps1'
 $opsRemediateScript = Join-Path $PSScriptRoot 'Invoke-OpsAutoRemediation.ps1'
+$cliDependencyGateScript = Join-Path $PSScriptRoot 'Invoke-CliDependencyGate.ps1'
 $dispatchWorkflowScript = Join-Path $PSScriptRoot 'Dispatch-WorkflowAtRemoteHead.ps1'
 $watchWorkflowScript = Join-Path $PSScriptRoot 'Watch-WorkflowRun.ps1'
 $canaryHygieneScript = Join-Path $PSScriptRoot 'Invoke-CanarySmokeTagHygiene.ps1'
@@ -62,7 +63,7 @@ $rollbackSelfHealingScript = Join-Path $PSScriptRoot 'Invoke-RollbackDrillSelfHe
 $releaseRunnerLabels = @('self-hosted', 'windows', 'self-hosted-windows-lv')
 $releaseRunnerLabelsCsv = [string]::Join(',', $releaseRunnerLabels)
 
-foreach ($requiredScript in @($opsSnapshotScript, $opsRemediateScript, $dispatchWorkflowScript, $watchWorkflowScript, $canaryHygieneScript, $rollbackSelfHealingScript)) {
+foreach ($requiredScript in @($opsSnapshotScript, $opsRemediateScript, $cliDependencyGateScript, $dispatchWorkflowScript, $watchWorkflowScript, $canaryHygieneScript, $rollbackSelfHealingScript)) {
     if (-not (Test-Path -LiteralPath $requiredScript -PathType Leaf)) {
         throw "required_script_missing: $requiredScript"
     }
@@ -605,6 +606,166 @@ function Invoke-ControlPlaneRollbackOrchestration {
     }
 }
 
+function Resolve-CliDependencyGatePolicy {
+    param(
+        [Parameter(Mandatory = $true)][string]$ManifestPath
+    )
+
+    $warnings = [System.Collections.Generic.List[string]]::new()
+    $policy = [ordered]@{
+        enabled = $true
+        source = 'default'
+        warnings = @()
+        hard_block_modes = @('PromotePrerelease', 'PromoteStable', 'FullCycle')
+        warn_only_modes = @('Validate', 'CanaryCycle')
+        sync_guard_repository = 'LabVIEW-Community-CI-CD/labview-cdev-cli'
+        sync_guard_workflow = 'fork-upstream-sync-guard'
+        sync_guard_branch = 'main'
+        sync_guard_max_age_hours = 12
+        fork_repository = 'svelderrainruiz/labview-cdev-cli'
+        required_assets = @('cdev-cli-win-x64.zip', 'cdev-cli-linux-x64.tar.gz')
+        runtime_publish_repository = 'LabVIEW-Community-CI-CD/labview-cdev-cli'
+        runtime_publish_workflow = 'publish-cli-runtime-image'
+        runtime_publish_branch = 'main'
+        runtime_attestation_artifact = 'cli-dependency-attestation'
+        expected_runtime_repository = 'ghcr.io/labview-community-ci-cd/labview-cdev-cli-runtime'
+        expected_runtime_digest = ''
+        expected_runtime_source_commit = ''
+    }
+
+    if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
+        [void]$warnings.Add("workspace_governance_missing: path=$ManifestPath")
+        $policy.warnings = @($warnings)
+        return $policy
+    }
+
+    try {
+        $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json -Depth 100
+        $releaseClient = $manifest.installer_contract.release_client
+        $candidatePolicy = $releaseClient.ops_control_plane_policy.cli_dependency_gate
+        if ($null -eq $candidatePolicy) {
+            [void]$warnings.Add('cli_dependency_gate_policy_missing')
+        } else {
+            $policy.source = 'workspace_governance'
+
+            if ($candidatePolicy.enabled -is [bool]) {
+                $policy.enabled = [bool]$candidatePolicy.enabled
+            }
+
+            $candidateHardBlockModes = @($candidatePolicy.hard_block_modes)
+            if (@($candidateHardBlockModes).Count -gt 0) {
+                $policy.hard_block_modes = @(
+                    $candidateHardBlockModes |
+                        ForEach-Object { ([string]$_).Trim() } |
+                        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+                        Select-Object -Unique
+                )
+            }
+
+            $candidateWarnOnlyModes = @($candidatePolicy.warn_only_modes)
+            if (@($candidateWarnOnlyModes).Count -gt 0) {
+                $policy.warn_only_modes = @(
+                    $candidateWarnOnlyModes |
+                        ForEach-Object { ([string]$_).Trim() } |
+                        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+                        Select-Object -Unique
+                )
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace([string]$candidatePolicy.sync_guard_repository)) {
+                $policy.sync_guard_repository = ([string]$candidatePolicy.sync_guard_repository).Trim()
+            }
+            if (-not [string]::IsNullOrWhiteSpace([string]$candidatePolicy.sync_guard_workflow)) {
+                $policy.sync_guard_workflow = ([string]$candidatePolicy.sync_guard_workflow).Trim()
+            }
+            if (-not [string]::IsNullOrWhiteSpace([string]$candidatePolicy.sync_guard_branch)) {
+                $policy.sync_guard_branch = ([string]$candidatePolicy.sync_guard_branch).Trim()
+            }
+
+            $candidateSyncGuardMaxAgeHours = 0
+            if ([int]::TryParse([string]$candidatePolicy.sync_guard_max_age_hours, [ref]$candidateSyncGuardMaxAgeHours) -and
+                $candidateSyncGuardMaxAgeHours -ge 1 -and $candidateSyncGuardMaxAgeHours -le 168) {
+                $policy.sync_guard_max_age_hours = $candidateSyncGuardMaxAgeHours
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace([string]$candidatePolicy.fork_repository)) {
+                $policy.fork_repository = ([string]$candidatePolicy.fork_repository).Trim()
+            }
+
+            $candidateRequiredAssets = @($candidatePolicy.required_assets)
+            if (@($candidateRequiredAssets).Count -gt 0) {
+                $policy.required_assets = @(
+                    $candidateRequiredAssets |
+                        ForEach-Object { ([string]$_).Trim() } |
+                        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+                        Select-Object -Unique
+                )
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace([string]$candidatePolicy.runtime_publish_repository)) {
+                $policy.runtime_publish_repository = ([string]$candidatePolicy.runtime_publish_repository).Trim()
+            }
+            if (-not [string]::IsNullOrWhiteSpace([string]$candidatePolicy.runtime_publish_workflow)) {
+                $policy.runtime_publish_workflow = ([string]$candidatePolicy.runtime_publish_workflow).Trim()
+            }
+            if (-not [string]::IsNullOrWhiteSpace([string]$candidatePolicy.runtime_publish_branch)) {
+                $policy.runtime_publish_branch = ([string]$candidatePolicy.runtime_publish_branch).Trim()
+            }
+            if (-not [string]::IsNullOrWhiteSpace([string]$candidatePolicy.runtime_attestation_artifact)) {
+                $policy.runtime_attestation_artifact = ([string]$candidatePolicy.runtime_attestation_artifact).Trim()
+            }
+        }
+
+        if ($null -ne $releaseClient.cdev_cli_sync) {
+            if (-not [string]::IsNullOrWhiteSpace([string]$releaseClient.cdev_cli_sync.primary_repo)) {
+                $policy.fork_repository = ([string]$releaseClient.cdev_cli_sync.primary_repo).Trim()
+            }
+            if (-not [string]::IsNullOrWhiteSpace([string]$releaseClient.cdev_cli_sync.mirror_repo)) {
+                $policy.sync_guard_repository = ([string]$releaseClient.cdev_cli_sync.mirror_repo).Trim()
+                $policy.runtime_publish_repository = ([string]$releaseClient.cdev_cli_sync.mirror_repo).Trim()
+            }
+        }
+
+        if ($null -ne $releaseClient.runtime_images -and $null -ne $releaseClient.runtime_images.cdev_cli_runtime) {
+            if (-not [string]::IsNullOrWhiteSpace([string]$releaseClient.runtime_images.cdev_cli_runtime.canonical_repository)) {
+                $policy.expected_runtime_repository = ([string]$releaseClient.runtime_images.cdev_cli_runtime.canonical_repository).Trim()
+            }
+            if (-not [string]::IsNullOrWhiteSpace([string]$releaseClient.runtime_images.cdev_cli_runtime.digest)) {
+                $policy.expected_runtime_digest = ([string]$releaseClient.runtime_images.cdev_cli_runtime.digest).Trim()
+            }
+            if (-not [string]::IsNullOrWhiteSpace([string]$releaseClient.runtime_images.cdev_cli_runtime.source_commit)) {
+                $policy.expected_runtime_source_commit = ([string]$releaseClient.runtime_images.cdev_cli_runtime.source_commit).Trim()
+            }
+        }
+    } catch {
+        [void]$warnings.Add("cli_dependency_gate_policy_load_failed: $([string]$_.Exception.Message)")
+    }
+
+    $policy.warnings = @($warnings)
+    return $policy
+}
+
+function Resolve-CliDependencyGateEnforcementMode {
+    param(
+        [Parameter(Mandatory = $true)][string]$ModeName,
+        [Parameter(Mandatory = $true)][object]$Policy
+    )
+
+    if (-not [bool]$Policy.enabled) {
+        return 'warn_only'
+    }
+
+    if (@($Policy.hard_block_modes) -contains $ModeName) {
+        return 'hard_block'
+    }
+
+    if (@($Policy.warn_only_modes) -contains $ModeName) {
+        return 'warn_only'
+    }
+
+    return 'warn_only'
+}
+
 $defaultSemverOnlyEnforceUtc = [DateTimeOffset]::Parse('2026-07-01T00:00:00Z')
 $workspaceGovernancePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'workspace-governance.json'
 $gaPolicy = Resolve-ControlPlaneGaPolicy -ManifestPath $workspaceGovernancePath
@@ -635,6 +796,11 @@ $script:stablePromotionOverrideReasonPattern = [string]$stablePromotionWindowPol
 $script:stablePromotionOverrideReasonExample = [string]$stablePromotionWindowPolicy.override_reason_example
 foreach ($warning in @($stablePromotionWindowPolicy.warnings)) {
     Write-Warning "[stable_promotion_window_policy_warning] $warning"
+}
+
+$script:cliDependencyGatePolicy = Resolve-CliDependencyGatePolicy -ManifestPath $workspaceGovernancePath
+foreach ($warning in @($script:cliDependencyGatePolicy.warnings)) {
+    Write-Warning "[cli_dependency_gate_policy_warning] $warning"
 }
 
 $script:releaseRequiredAssets = @(
@@ -668,6 +834,7 @@ function Resolve-ControlPlaneFailureReasonCode {
     if ($message -match '^promotion_source_not_at_head') { return 'promotion_source_not_at_head' }
     if ($message -match '^promotion_lineage_invalid') { return 'promotion_lineage_invalid' }
     if ($message -match '^stable_window_override_') { return 'stable_window_override_invalid' }
+    if ($message -match '^cli_dependency_gate_failed') { return 'cli_dependency_gate_failed' }
     if ($message -match '^branch_head_unresolved') { return 'branch_head_unresolved' }
     if ($message -match '^semver_prerelease_sequence_exhausted') { return 'semver_prerelease_sequence_exhausted' }
     if ($message -match '^release_tag_collision_retry_exhausted') { return 'release_tag_collision_retry_exhausted' }
@@ -1968,6 +2135,14 @@ $report = [ordered]@{
             reason_code = 'not_full_cycle_mode'
         }
     }
+    cli_dependency_gate = [ordered]@{
+        status = 'not_run'
+        enforcement_mode = Resolve-CliDependencyGateEnforcementMode -ModeName $Mode -Policy $script:cliDependencyGatePolicy
+        reason_codes = @()
+        message = ''
+        sync_guard_evidence = $null
+        runtime_evidence = $null
+    }
     status = 'fail'
     reason_code = ''
     message = ''
@@ -2052,6 +2227,61 @@ try {
     if ([string]$report.post_health.status -ne 'pass') {
         throw "ops_unhealthy: reason_codes=$([string]::Join(',', @($report.post_health.reason_codes)))"
     }
+
+    if ([bool]$script:cliDependencyGatePolicy.enabled) {
+        $cliDependencyGatePath = Join-Path $scratchRoot 'cli-dependency-gate.json'
+        $cliSyncGuardMaxAgeHours = [Math]::Min([int]$SyncGuardMaxAgeHours, [int]$script:cliDependencyGatePolicy.sync_guard_max_age_hours)
+        $cliDependencyGateExitCode = 0
+        try {
+            & pwsh -NoProfile -File $cliDependencyGateScript `
+                -SyncGuardRepository ([string]$script:cliDependencyGatePolicy.sync_guard_repository) `
+                -ForkRepository ([string]$script:cliDependencyGatePolicy.fork_repository) `
+                -SyncGuardBranch ([string]$script:cliDependencyGatePolicy.sync_guard_branch) `
+                -SyncGuardWorkflow ([string]$script:cliDependencyGatePolicy.sync_guard_workflow) `
+                -SyncGuardMaxAgeHours $cliSyncGuardMaxAgeHours `
+                -RequiredAssets @($script:cliDependencyGatePolicy.required_assets) `
+                -RuntimePublishRepository ([string]$script:cliDependencyGatePolicy.runtime_publish_repository) `
+                -RuntimePublishBranch ([string]$script:cliDependencyGatePolicy.runtime_publish_branch) `
+                -RuntimePublishWorkflow ([string]$script:cliDependencyGatePolicy.runtime_publish_workflow) `
+                -RuntimeAttestationArtifactName ([string]$script:cliDependencyGatePolicy.runtime_attestation_artifact) `
+                -ExpectedRuntimeRepository ([string]$script:cliDependencyGatePolicy.expected_runtime_repository) `
+                -ExpectedRuntimeDigest ([string]$script:cliDependencyGatePolicy.expected_runtime_digest) `
+                -ExpectedRuntimeSourceCommit ([string]$script:cliDependencyGatePolicy.expected_runtime_source_commit) `
+                -EnforcementMode ([string]$report.cli_dependency_gate.enforcement_mode) `
+                -OutputPath $cliDependencyGatePath
+            $cliDependencyGateExitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
+        } catch {
+            $cliDependencyGateExitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+        }
+
+        if (Test-Path -LiteralPath $cliDependencyGatePath -PathType Leaf) {
+            $cliDependencyGateReport = Get-Content -LiteralPath $cliDependencyGatePath -Raw | ConvertFrom-Json -ErrorAction Stop
+            $report.cli_dependency_gate.status = [string]$cliDependencyGateReport.status
+            $report.cli_dependency_gate.reason_codes = @($cliDependencyGateReport.reason_codes)
+            $report.cli_dependency_gate.message = [string]$cliDependencyGateReport.message
+            $report.cli_dependency_gate.sync_guard_evidence = $cliDependencyGateReport.sync_guard_evidence
+            $report.cli_dependency_gate.runtime_evidence = $cliDependencyGateReport.runtime_evidence
+        } else {
+            $report.cli_dependency_gate.status = 'fail'
+            $report.cli_dependency_gate.reason_codes = @('cli_dependency_gate_report_missing')
+            $report.cli_dependency_gate.message = "CLI dependency gate report missing: $cliDependencyGatePath"
+        }
+
+        $cliDependencyGateFailed = ($cliDependencyGateExitCode -ne 0) -or ([string]$report.cli_dependency_gate.status -eq 'fail')
+        if ($cliDependencyGateFailed -and [string]$report.cli_dependency_gate.enforcement_mode -eq 'hard_block') {
+            $joinedReasonCodes = [string]::Join(',', @($report.cli_dependency_gate.reason_codes))
+            throw "cli_dependency_gate_failed: reason_codes=$joinedReasonCodes"
+        }
+
+        if ($cliDependencyGateFailed -and [string]$report.cli_dependency_gate.enforcement_mode -eq 'warn_only') {
+            $report.cli_dependency_gate.status = 'warn'
+        }
+    } else {
+        $report.cli_dependency_gate.status = 'skipped'
+        $report.cli_dependency_gate.reason_codes = @('cli_dependency_gate_disabled')
+        $report.cli_dependency_gate.message = 'CLI dependency gate is disabled by policy.'
+    }
+
     Add-ControlPlaneStateTransition `
         -StateMachine $report.state_machine `
         -FromState 'ops_health_verify' `

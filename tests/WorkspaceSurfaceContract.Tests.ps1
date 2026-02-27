@@ -40,6 +40,7 @@ Describe 'Workspace surface contract' {
         $script:raceHardeningDrillScriptPath = Join-Path $script:repoRoot 'scripts/Invoke-ReleaseRaceHardeningDrill.ps1'
         $script:raceHardeningGateScriptPath = Join-Path $script:repoRoot 'scripts/Test-ReleaseRaceHardeningGate.ps1'
         $script:releaseGuardrailsSelfHealingScriptPath = Join-Path $script:repoRoot 'scripts/Invoke-ReleaseGuardrailsSelfHealing.ps1'
+        $script:cliDependencyGateScriptPath = Join-Path $script:repoRoot 'scripts/Invoke-CliDependencyGate.ps1'
         $script:releaseBranchProtectionPolicyScriptPath = Join-Path $script:repoRoot 'scripts/Test-ReleaseBranchProtectionPolicy.ps1'
         $script:setReleaseBranchProtectionPolicyScriptPath = Join-Path $script:repoRoot 'scripts/Set-ReleaseBranchProtectionPolicy.ps1'
         $script:dockerLinuxIterationScriptPath = Join-Path $script:repoRoot 'scripts/Invoke-DockerDesktopLinuxIteration.ps1'
@@ -118,6 +119,7 @@ Describe 'Workspace surface contract' {
             $script:raceHardeningDrillScriptPath,
             $script:raceHardeningGateScriptPath,
             $script:releaseGuardrailsSelfHealingScriptPath,
+            $script:cliDependencyGateScriptPath,
             $script:releaseBranchProtectionPolicyScriptPath,
             $script:setReleaseBranchProtectionPolicyScriptPath,
             $script:dockerLinuxIterationScriptPath,

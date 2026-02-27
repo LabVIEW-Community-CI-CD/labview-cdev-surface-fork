@@ -217,6 +217,8 @@ Build and gate lanes must run in isolated workspaces on every run (`D:\dev` pref
 - `ops_control_plane_policy.state_machine` is required and must emit runtime transition evidence in `release-control-plane-report.json`.
 - `ops_control_plane_policy.rollback_orchestration` is required and controls deterministic rollback self-healing trigger behavior.
 - `ops_control_plane_policy.decision_trail` is required and controls deterministic decision-trail evidence emission (`release-control-plane-decision-trail.json`).
+- `ops_control_plane_policy.cli_dependency_gate` is required and controls Tier-0 cdev-cli dependency hard-block (`PromotePrerelease|PromoteStable|FullCycle`) vs warn-only (`Validate|CanaryCycle`) behavior.
+- `scripts/Invoke-CliDependencyGate.ps1` is the canonical dependency-gate runtime and must emit `sync_guard_evidence` + `runtime_evidence` fields in control-plane reports.
 - Control-plane mode contract:
   - `Validate`
   - `CanaryCycle`

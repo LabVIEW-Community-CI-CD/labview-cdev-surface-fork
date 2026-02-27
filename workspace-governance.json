@@ -391,6 +391,31 @@
           "channel": "canary",
           "required_history_count": 2,
           "release_limit": 100
+        },
+        "cli_dependency_gate": {
+          "enabled": true,
+          "hard_block_modes": [
+            "PromotePrerelease",
+            "PromoteStable",
+            "FullCycle"
+          ],
+          "warn_only_modes": [
+            "Validate",
+            "CanaryCycle"
+          ],
+          "sync_guard_repository": "LabVIEW-Community-CI-CD/labview-cdev-cli",
+          "sync_guard_workflow": "fork-upstream-sync-guard",
+          "sync_guard_branch": "main",
+          "sync_guard_max_age_hours": 12,
+          "fork_repository": "svelderrainruiz/labview-cdev-cli",
+          "required_assets": [
+            "cdev-cli-win-x64.zip",
+            "cdev-cli-linux-x64.tar.gz"
+          ],
+          "runtime_publish_repository": "LabVIEW-Community-CI-CD/labview-cdev-cli",
+          "runtime_publish_workflow": "publish-cli-runtime-image",
+          "runtime_publish_branch": "main",
+          "runtime_attestation_artifact": "cli-dependency-attestation"
         }
       },
       "cdev_cli_sync": {
@@ -698,4 +723,3 @@
     }
   ]
 }
-

@@ -127,6 +127,7 @@ $executionSummaries = @(
 
 $stablePromotionWindow = Get-OptionalPropertyValue -Object $report -Name 'stable_promotion_window' -Default $null
 $stableWindowDecision = Get-OptionalPropertyValue -Object $stablePromotionWindow -Name 'decision' -Default $null
+$cliDependencyGate = Get-OptionalPropertyValue -Object $report -Name 'cli_dependency_gate' -Default $null
 
 $decisionTrail = [ordered]@{
     schema_version = '1.0'
@@ -159,6 +160,16 @@ $decisionTrail = [ordered]@{
             can_promote = [bool](Get-OptionalPropertyValue -Object $stableWindowDecision -Name 'can_promote' -Default $false)
             current_utc_weekday = [string](Get-OptionalPropertyValue -Object $stableWindowDecision -Name 'current_utc_weekday' -Default '')
         }
+        cli_dependency_gate = [ordered]@{
+            status = [string](Get-OptionalPropertyValue -Object $cliDependencyGate -Name 'status' -Default 'not_run')
+            enforcement_mode = [string](Get-OptionalPropertyValue -Object $cliDependencyGate -Name 'enforcement_mode' -Default '')
+            reason_codes = @(
+                @(Get-OptionalPropertyValue -Object $cliDependencyGate -Name 'reason_codes' -Default @()) |
+                    ForEach-Object { [string]$_ }
+            )
+            sync_guard_evidence = Get-OptionalPropertyValue -Object $cliDependencyGate -Name 'sync_guard_evidence' -Default $null
+            runtime_evidence = Get-OptionalPropertyValue -Object $cliDependencyGate -Name 'runtime_evidence' -Default $null
+        }
         executions = @($executionSummaries)
     }
 }
@@ -171,6 +182,8 @@ $fingerprintPayload = [ordered]@{
     state_machine_current_state = if ($null -eq $decisionTrail.decision_evidence.state_machine) { '' } else { [string]$decisionTrail.decision_evidence.state_machine.current_state }
     rollback_status = if ($null -eq $decisionTrail.decision_evidence.rollback_orchestration) { '' } else { [string]$decisionTrail.decision_evidence.rollback_orchestration.status }
     rollback_reason_code = if ($null -eq $decisionTrail.decision_evidence.rollback_orchestration) { '' } else { [string]$decisionTrail.decision_evidence.rollback_orchestration.reason_code }
+    cli_dependency_gate_status = [string]$decisionTrail.decision_evidence.cli_dependency_gate.status
+    cli_dependency_gate_reason_codes = [string]::Join(',', @($decisionTrail.decision_evidence.cli_dependency_gate.reason_codes))
 }
 
 $decisionTrail.signature = [ordered]@{

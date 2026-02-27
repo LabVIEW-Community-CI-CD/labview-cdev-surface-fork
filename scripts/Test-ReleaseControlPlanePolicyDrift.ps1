@@ -191,6 +191,42 @@ try {
                     }
                 }
 
+                $cliDependencyGatePresent = ($null -ne $releaseClient.ops_control_plane_policy.cli_dependency_gate)
+                $checks.Add([ordered]@{
+                        check = 'release_client_ops_control_plane_policy_cli_dependency_gate_present'
+                        passed = $cliDependencyGatePresent
+                    }) | Out-Null
+                if (-not $cliDependencyGatePresent) {
+                    Add-ReasonCode -Target $reasonCodes -ReasonCode 'ops_control_plane_cli_dependency_gate_missing'
+                } else {
+                    $cliGateHardBlockModesPresent = (@($releaseClient.ops_control_plane_policy.cli_dependency_gate.hard_block_modes).Count -gt 0)
+                    $checks.Add([ordered]@{
+                            check = 'release_client_ops_control_plane_policy_cli_dependency_gate_hard_block_modes_present'
+                            passed = $cliGateHardBlockModesPresent
+                        }) | Out-Null
+                    if (-not $cliGateHardBlockModesPresent) {
+                        Add-ReasonCode -Target $reasonCodes -ReasonCode 'ops_control_plane_cli_dependency_gate_hard_block_modes_missing'
+                    }
+
+                    $cliGateWarnOnlyModesPresent = (@($releaseClient.ops_control_plane_policy.cli_dependency_gate.warn_only_modes).Count -gt 0)
+                    $checks.Add([ordered]@{
+                            check = 'release_client_ops_control_plane_policy_cli_dependency_gate_warn_only_modes_present'
+                            passed = $cliGateWarnOnlyModesPresent
+                        }) | Out-Null
+                    if (-not $cliGateWarnOnlyModesPresent) {
+                        Add-ReasonCode -Target $reasonCodes -ReasonCode 'ops_control_plane_cli_dependency_gate_warn_only_modes_missing'
+                    }
+
+                    $cliGateRuntimeWorkflowPresent = (-not [string]::IsNullOrWhiteSpace([string]$releaseClient.ops_control_plane_policy.cli_dependency_gate.runtime_publish_workflow))
+                    $checks.Add([ordered]@{
+                            check = 'release_client_ops_control_plane_policy_cli_dependency_gate_runtime_publish_workflow_present'
+                            passed = $cliGateRuntimeWorkflowPresent
+                        }) | Out-Null
+                    if (-not $cliGateRuntimeWorkflowPresent) {
+                        Add-ReasonCode -Target $reasonCodes -ReasonCode 'ops_control_plane_cli_dependency_gate_runtime_publish_workflow_missing'
+                    }
+                }
+
                 $stableWindowPresent = ($null -ne $releaseClient.ops_control_plane_policy.stable_promotion_window)
                 $checks.Add([ordered]@{
                         check = 'release_client_ops_control_plane_policy_stable_window_present'

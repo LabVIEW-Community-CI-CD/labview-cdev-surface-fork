@@ -412,6 +412,9 @@ Control-plane behavior:
 13. Loads GA policy contract `installer_contract.release_client.ops_control_plane_policy.schema_version=2.0` and emits state-machine execution evidence (`state_machine.transitions_executed`) in every report.
 14. Executes deterministic rollback orchestration (`Invoke-RollbackDrillSelfHealing.ps1`) when configured trigger reason codes are hit.
 15. Emits deterministic decision-trail evidence artifact `release-control-plane-decision-trail.json` (report hash + state-machine + rollback evidence fingerprint).
+16. Evaluates Tier-0 cdev-cli dependency gate (`scripts/Invoke-CliDependencyGate.ps1`) and emits `cli_dependency_gate` evidence with mode-based enforcement:
+    - hard-block: `PromotePrerelease`, `PromoteStable`, `FullCycle`
+    - warn-only: `Validate`, `CanaryCycle`
 
 Top-level release-control-plane deterministic failure reason codes include:
 - `ops_health_gate_failed`
