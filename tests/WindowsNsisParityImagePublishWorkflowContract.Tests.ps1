@@ -33,7 +33,7 @@ Describe 'Windows NSIS parity image publish workflow contract' {
 
     It 'publishes to GHCR with package write permission and deterministic digest reporting' {
         $script:workflowContent | Should -Match 'packages:\s*write'
-        $script:workflowContent | Should -Match 'ghcr\.io/labview-community-ci-cd/labview-cdev-surface-nsis-windows-parity'
+        $script:workflowContent | Should -Match 'ghcr\.io/labview-community-ci-cd/labview-cdev-surface-fork-nsis-windows-parity'
         $script:workflowContent | Should -Match 'docker/login-action@v3'
         $script:workflowContent | Should -Match 'docker push'
         $script:workflowContent | Should -Match 'sha-\$shortSha'

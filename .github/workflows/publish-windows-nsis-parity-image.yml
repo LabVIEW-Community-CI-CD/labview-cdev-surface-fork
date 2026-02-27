@@ -27,7 +27,7 @@ jobs:
     name: Publish Windows NSIS Parity Image
     runs-on: [self-hosted, windows, windows-containers, cdev-surface-windows-gate]
     env:
-      IMAGE_REPO: ghcr.io/labview-community-ci-cd/labview-cdev-surface-nsis-windows-parity
+      IMAGE_REPO: ghcr.io/labview-community-ci-cd/labview-cdev-surface-fork-nsis-windows-parity
       BASE_TAG: 2026q1-windows
       WINDOWS_DOCKER_CONTEXT: ${{ vars.WINDOWS_DOCKER_CONTEXT }}
     steps:
@@ -66,7 +66,7 @@ jobs:
             $tags += "$env:IMAGE_REPO`:$additionalTag"
           }
 
-          $localImage = "labview-cdev-surface-nsis-windows-parity:selftest-$shortSha"
+          $localImage = "labview-cdev-surface-fork-nsis-windows-parity:selftest-$shortSha"
           $tagsCsv = [string]::Join('|', $tags)
 
           "date_utc=$dateUtc" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
@@ -220,6 +220,16 @@ jobs:
             throw 'No publish tags resolved.'
           }
 
+          $maxPushAttempts = 4
+          $transientPushPatterns = @(
+            'use of closed network connection',
+            'unexpected EOF',
+            'connection reset by peer',
+            'context deadline exceeded',
+            'i/o timeout',
+            'TLS handshake timeout'
+          )
+
           $digest = ''
           foreach ($tag in $tags) {
             & docker tag $localImage $tag
@@ -227,12 +237,39 @@ jobs:
               throw "docker tag failed for '$tag'."
             }
 
-            $pushOutput = & docker push $tag 2>&1
-            if ($LASTEXITCODE -ne 0) {
+            $pushOutput = $null
+            $pushSucceeded = $false
+            for ($attempt = 1; $attempt -le $maxPushAttempts; $attempt++) {
+              $pushOutput = & docker push $tag 2>&1
+              $pushExitCode = $LASTEXITCODE
               $pushOutput | ForEach-Object { Write-Host $_ }
+
+              if ($pushExitCode -eq 0) {
+                $pushSucceeded = $true
+                break
+              }
+
+              $pushText = ($pushOutput | Out-String)
+              $isTransientFailure = $false
+              foreach ($pattern in $transientPushPatterns) {
+                if ($pushText -match [regex]::Escape($pattern)) {
+                  $isTransientFailure = $true
+                  break
+                }
+              }
+
+              if (-not $isTransientFailure -or $attempt -eq $maxPushAttempts) {
+                throw "docker push failed for '$tag' after $attempt attempt(s)."
+              }
+
+              $delaySeconds = [Math]::Min(5 * $attempt, 20)
+              Write-Warning "docker_push_retry: tag='$tag' attempt=$attempt/$maxPushAttempts delay_seconds=$delaySeconds"
+              Start-Sleep -Seconds $delaySeconds
+            }
+
+            if (-not $pushSucceeded) {
               throw "docker push failed for '$tag'."
             }
-            $pushOutput | ForEach-Object { Write-Host $_ }
 
             $pushText = ($pushOutput | Out-String)
             $digestMatch = [regex]::Match($pushText, 'digest:\s*(sha256:[0-9a-f]{64})')
