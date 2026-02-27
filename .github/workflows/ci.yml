@@ -53,6 +53,7 @@ jobs:
             './tests/ReleaseManifestContract.Tests.ps1',
             './tests/ReleaseClientRuntimeContract.Tests.ps1',
             './tests/ReleaseClientPolicyContract.Tests.ps1',
+            './tests/ReleaseClientDependencyGateContract.Tests.ps1',
             './tests/WorkspaceInstallRuntimeContract.Tests.ps1',
             './tests/Build-WorkspaceBootstrapInstaller.Tests.ps1',
             './tests/Build-RunnerCliBundleFromManifest.Tests.ps1',

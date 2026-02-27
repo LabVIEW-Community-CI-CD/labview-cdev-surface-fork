@@ -91,6 +91,18 @@ Describe 'Release client policy contract' {
         $releaseClient.ops_control_plane_policy.tag_strategy.legacy_tag_family | Should -Be 'legacy_date_window'
         ([DateTime]$releaseClient.ops_control_plane_policy.tag_strategy.semver_only_enforce_utc).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') | Should -Be '2026-07-01T00:00:00Z'
         ([DateTime]$releaseClient.ops_control_plane_policy.tag_strategy.semver_only_enforce_utc).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') | Should -Be (([DateTime]$releaseClient.signature_policy.grace_end_utc).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))
+        $releaseClient.ops_control_plane_policy.cli_dependency_gate.enabled | Should -BeTrue
+        @($releaseClient.ops_control_plane_policy.cli_dependency_gate.hard_block_modes) | Should -Contain 'PromotePrerelease'
+        @($releaseClient.ops_control_plane_policy.cli_dependency_gate.hard_block_modes) | Should -Contain 'PromoteStable'
+        @($releaseClient.ops_control_plane_policy.cli_dependency_gate.hard_block_modes) | Should -Contain 'FullCycle'
+        @($releaseClient.ops_control_plane_policy.cli_dependency_gate.warn_only_modes) | Should -Contain 'Validate'
+        @($releaseClient.ops_control_plane_policy.cli_dependency_gate.warn_only_modes) | Should -Contain 'CanaryCycle'
+        $releaseClient.ops_control_plane_policy.cli_dependency_gate.sync_guard_repository | Should -Be 'LabVIEW-Community-CI-CD/labview-cdev-cli'
+        $releaseClient.ops_control_plane_policy.cli_dependency_gate.fork_repository | Should -Be 'svelderrainruiz/labview-cdev-cli'
+        $releaseClient.ops_control_plane_policy.cli_dependency_gate.runtime_publish_workflow | Should -Be 'publish-cli-runtime-image'
+        $releaseClient.ops_control_plane_policy.cli_dependency_gate.runtime_attestation_artifact | Should -Be 'cli-dependency-attestation'
+        @($releaseClient.ops_control_plane_policy.cli_dependency_gate.required_assets) | Should -Contain 'cdev-cli-win-x64.zip'
+        @($releaseClient.ops_control_plane_policy.cli_dependency_gate.required_assets) | Should -Contain 'cdev-cli-linux-x64.tar.gz'
         @($releaseClient.ops_control_plane_policy.stable_promotion_window.full_cycle_allowed_utc_weekdays) | Should -Contain 'Monday'
         $releaseClient.ops_control_plane_policy.stable_promotion_window.allow_outside_window_with_override | Should -BeTrue
         $releaseClient.ops_control_plane_policy.stable_promotion_window.override_reason_required | Should -BeTrue
@@ -147,6 +159,9 @@ Describe 'Release client policy contract' {
         $script:policyScriptContent | Should -Match 'ops_policy_decision_trail_schema_version'
         $script:policyScriptContent | Should -Match 'ops_policy_decision_trail_hash_algorithm'
         $script:policyScriptContent | Should -Match 'ops_policy_tag_strategy_semver_only_enforce'
+        $script:policyScriptContent | Should -Match 'ops_policy_cli_dependency_gate_enabled'
+        $script:policyScriptContent | Should -Match 'ops_policy_cli_dependency_gate_runtime_publish_workflow'
+        $script:policyScriptContent | Should -Match 'ops_policy_cli_dependency_gate_attestation_artifact'
         $script:policyScriptContent | Should -Match 'ops_policy_stable_window_full_cycle_weekday_monday'
         $script:policyScriptContent | Should -Match 'ops_policy_stable_window_reason_pattern_exists'
         $script:policyScriptContent | Should -Match 'ops_policy_stable_window_reason_example'
